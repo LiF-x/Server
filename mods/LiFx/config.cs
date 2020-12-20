@@ -6,7 +6,7 @@ if (!isObject(LiFx))
 }
 
 // Activate mods
-$LiFx::liveAlignmentActive = false;
+$LiFx::liveAlignmentActive = true;
 
 
 /*****************************
