@@ -5,9 +5,16 @@ if (!isObject(LiFx))
   };
 }
 
-// Activate mods
+// Scripts
 $LiFx::liveAlignmentActive = true;
+$LiFx::offlineRaidProtectionActive = true;
 
+/*****************************
+*PVP Raid Protection
+*
+* raidProtection::timeToProtection- ime delay from last member of a claim disconnecting to when protection is applied.
+*/
+$LiFx::raidProtection::timeToProtection = 5; // T
 
 /*****************************
 *Live Alignment
