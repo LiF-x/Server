@@ -14,7 +14,7 @@ $LiFx::offlineRaidProtectionActive = true;
 *
 * raidProtection::timeToProtection- ime delay from last member of a claim disconnecting to when protection is applied.
 */
-$LiFx::raidProtection::timeToProtection = 5; // T
+$LiFx::raidProtection::timeToProtection = 5;
 
 /*****************************
 *Live Alignment
