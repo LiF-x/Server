@@ -30,7 +30,7 @@ package LiFxRaidProtection {
 
   function LiFxRaidProtection::setup() {
     LiFx::registerCallback($LiFx::hooks::onJHStartCallbacks,addProtection, LiFxRaidProtection);
-    LiFx::registerCallback($LiFx::hooks::onJHEndCallbacks,removeProtection, LiFxRaidProtection);
+    LiFx::registerCallback($LiFx::hooks::onJHEndCallbacks,forceRemoveProtection, LiFxRaidProtection);
     LiFx::registerCallback($LiFx::hooks::onConnectCallbacks,onConnectClient, LiFxRaidProtection);
     LiFx::registerCallback($LiFx::hooks::onDisconnectCallbacks,onDisconnectClient, LiFxRaidProtection);
     LiFx::registerCallback($LiFx::hooks::onCharacterCreateCallbacks,addCharacter, LiFxRaidProtection);
@@ -54,15 +54,12 @@ package LiFxRaidProtection {
     dbi.Update("UPDATE `LiFx_character` SET active = 0;");
   }
   function LiFxRaidProtection::addProtection(%this, %rs) {
-    echo("Add protection" SPC %rs.getName());
     if(!%rs)
       dbi.Select(LifXRaidprotection, "addProtection", "SELECT DISTINCT g.ID as GuildID, g.Name, gl.CenterGeoID, gl.Radius FROM `lifx_character` lifxC  LEFT JOIN `character` c ON c.ID = lifxC.id LEFT JOIN `guilds` AS g ON c.GuildID = g.ID LEFT JOIN `guild_lands` gl ON gl.GuildID = g.ID  WHERE g.GuildTypeID > 2 AND lifxC.active = 0");
     else {
       if(%rs.ok())
       {
-        echo(%rs.ok());
         while(%rs.nextRecord()){
-          echo(%rs.getFieldValue("GuildID") SPC %rs.getFieldValue("Name") SPC %rs.getFieldValue("CenterGeoID") SPC %rs.getFieldValue("Radius"));
           LiFxRaidProtection::createProtection(%rs.getFieldValue("GuildID"),%rs.getFieldValue("Name"),%rs.getFieldValue("CenterGeoID"),%rs.getFieldValue("Radius"));
         }
       }
@@ -84,21 +81,17 @@ package LiFxRaidProtection {
       %count = %rs.getFieldValue("count");
       %GuildID = %rs.getFieldValue("ID");
       %CharID = %rs.getFieldValue("CharID");
-      echo(%count SPC %GuildID SPC %CharID);
-      if(%count > 0 && %GuildID && %CharID) {// Apply protection only when none are online
-        LiFx::debugEcho("Start schedule" SPC $LiFx::raidProtection::timeToProtection * 60000 SPC %count SPC %GuildID SPC %CharID);
+      if(%count > 0 && %GuildID && %CharID > 0) {// Apply protection only when none are online
         LiFxRaidProtection.schedule($LiFx::raidProtection::timeToProtection * 60000, "verifyProtectionDB", %GuildID);
       }
-      else if (%count == 0 && !%GuildID && %CharID)
+      else if (%count == 0 && !%GuildID && %CharID > 0)
         dbi.Select(LifXRaidprotection, "assessProtection", "SELECT COUNT(*), g.ID,  c.id as CharID FROM `lifx_character` lifxC LEFT JOIN `character` c ON c.ID = lifxC.id LEFT JOIN `character` cg ON c.GuildID = cg.GuildID LEFT JOIN `guilds` g ON g.ID = cg.GuildID WHERE lifxC.active = 0 AND g.GuildTypeID > 2 AND lifxC.id = " @ %CharID );
     }
   }
   function LiFxRaidProtection::verifyProtectionDB(%this,%GuildID) {
-    LiFx::debugEcho("verifyProtectionDB" SPC %GuildID);
     dbi.Select(LifXRaidprotection, "verifyProtection", "SELECT COUNT(*), g.ID as GuildID, g.Name FROM `lifx_character` lifxC  LEFT JOIN `character` c ON c.ID = lifxC.id LEFT JOIN `guilds` AS g ON c.GuildID = g.ID LEFT JOIN `guild_lands` gl ON gl.GuildID = g.ID  WHERE g.GuildTypeID > 2 AND lifxC.active = 1 AND c.GuildID = "@ %GuildID);
   }
   function LifXRaidprotection::verifyProtection(%this, %rs) {
-    LiFx::debugEcho("verifyProtection" SPC %rs.ok());
     if(%rs.ok() && %rs.nextRecord())
     {
       %count = %rs.getFieldValue("count");
@@ -171,6 +164,26 @@ package LiFxRaidProtection {
       }
     }
   }
+  
+  function LiFxRaidProtection::forceRemoveProtection(%this) {
+    if(!%rs)
+      dbi.Select(LifXRaidprotection, "removeProtection", "SELECT g.Name FROM `guilds` AS g WHERE g.GuildTypeID > 2");
+    else {
+      if(%rs.ok())
+      {
+        while(%rs.nextRecord()) 
+        {
+          for(%i = 0; %i < $LiFxRaidProtection::triggers.getCount(); %i++) {
+            if($LiFxRaidProtection::triggers.getObject(%i).name $= %rs.getFieldValue("Name")) {
+              $LiFxRaidProtection::triggers.getObject(%i).shield.delete();
+              $LiFxRaidProtection::triggers.getObject(%i).Trigger.delete();
+              $LiFxRaidProtection::triggers.getObject(%i).delete();
+            }
+          }
+        }
+      }
+    }
+  }
   function LiFxRaidProtection::removeProtection(%this, %rs) {
     if(!%rs)
       dbi.Select(LifXRaidprotection, "removeProtection", "SELECT g.ID as GuildID, g.Name, gl.CenterGeoID, gl.Radius FROM `lifx_character` lifxC  LEFT JOIN `character` c ON c.ID = lifxC.id LEFT JOIN `guilds` AS g ON c.GuildID = g.ID LEFT JOIN `guild_lands` gl ON gl.GuildID = g.ID  WHERE g.GuildTypeID > 2 AND 0 = (SELECT COUNT(*) FROM `lifx_character` lc LEFT JOIN `character` c2 ON c2.ID = lc.id WHERE lc.active = 1)");
@@ -180,14 +193,12 @@ package LiFxRaidProtection {
         while(%rs.nextRecord()) 
         {
           for(%i = 0; %i < $LiFxRaidProtection::triggers.getCount(); %i++) {
-            echo(%i SPC %rs.getFieldValue("Name") SPC %rs.getFieldValue("GuildID") SPC $LiFxRaidProtection::triggers.getCount() SPC $LiFxRaidProtection::triggers.getObject(%i).Name SPC $LiFxRaidProtection::triggers.getObject(%i).name);
             if($LiFxRaidProtection::triggers.getObject(%i).name $= %rs.getFieldValue("Name")) {
               $LiFxRaidProtection::triggers.getObject(%i).shield.delete();
               $LiFxRaidProtection::triggers.getObject(%i).Trigger.delete();
               $LiFxRaidProtection::triggers.getObject(%i).delete();
             }
           }
-          echo($LiFxRaidProtection::triggers.getCount());
         }
       }
     }
@@ -288,8 +299,6 @@ package LiFxRaidProtection {
     return ((%t << 18) | (%y << 9)) | %x;
   }
   function LiFxRaidProtectionTrigger::onEnterTrigger(%this, %trigger, %player) {
-
-    echo("Entered claim trigger");
     %z = nextToken(nextToken(%player.position, "x", " "), "y", " ");
     %player.savePlayer();
     if(getRandom() > 0.5)
