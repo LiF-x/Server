@@ -20,6 +20,9 @@ package LiFxFullServerFix
   function LiFxFullServerFix::setup() {
     LiFx::registerCallback($LiFx::hooks::onPreConnectRequestCallbacks, onPreConnectRequest, LiFxFullServerFix);
   }
+  function LiFxFullServerFix::version() {
+    return "0.0.1";
+  }
 
   function LiFxFullServerFix::onPreConnectRequest(%this, %client, %nettAddress, %name) {
     LiFx::debugEcho($Server::PlayerCount SPC $Server::MaxPlayers );
