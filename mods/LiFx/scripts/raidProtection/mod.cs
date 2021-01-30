@@ -37,6 +37,9 @@ package LiFxRaidProtection {
     LiFx::registerCallback($LiFx::hooks::onPostInitCallbacks,onPostInit, LiFxRaidProtection);
     LiFx::registerCallback($LiFx::hooks::onInitServerDBChangesCallbacks,dbChanges, LiFxRaidProtection);
   }
+  function LiFxRaidProtection::version() {
+    return "1.0.1";
+  }
   function LifXRaidprotection::dbChanges() {
     dbi.Update("ALTER TABLE `guild_standings` CHANGE COLUMN `StandingTypeID` `StandingTypeID` TINYINT(3) UNSIGNED NOT NULL DEFAULT '3' AFTER `GuildID2`;");
     dbi.Update("CREATE TABLE IF NOT EXISTS `LiFx_character` (	`id` INT UNSIGNED NOT NULL,	`active` BIT NULL DEFAULT NULL,	`loggedIn` TIMESTAMP NULL DEFAULT NULL,	`loggedOut` TIMESTAMP NULL DEFAULT NULL,	PRIMARY KEY (`id`),	CONSTRAINT `fk_character_id` FOREIGN KEY (`id`) REFERENCES `character` (`ID`) ON UPDATE NO ACTION ON DELETE NO ACTION) COLLATE='latin1_swedish_ci';");
@@ -55,14 +58,17 @@ package LiFxRaidProtection {
   }
   function LiFxRaidProtection::addProtection(%this, %rs) {
     if(!%rs)
-      dbi.Select(LifXRaidprotection, "addProtection", "SELECT DISTINCT g.ID as GuildID, g.Name, gl.CenterGeoID, gl.Radius FROM `lifx_character` lifxC  LEFT JOIN `character` c ON c.ID = lifxC.id LEFT JOIN `guilds` AS g ON c.GuildID = g.ID LEFT JOIN `guild_lands` gl ON gl.GuildID = g.ID  WHERE g.GuildTypeID > 2 AND lifxC.active = 0");
+      dbi.Select(LifXRaidprotection, "addProtection", "SELECT g.Name, gl.CenterGeoID, gl.Radius, ret.actives, ret.total, ret.GuildID FROM ( SELECT SUM(lc.active) AS actives, COUNT(lc.active) AS total, c.GuildID AS GuildID FROM `lifx_character` lc LEFT JOIN `character` c ON c.ID = lc.id GROUP BY c.GuildID ) AS ret LEFT JOIN `guilds` AS g ON ret.GuildID = g.ID LEFT JOIN `guild_lands` gl ON gl.GuildID = g.ID WHERE g.GuildTypeID > 2 AND ret.actives = 0 GROUP BY ret.GuildID");
     else {
       if(%rs.ok())
       {
         while(%rs.nextRecord()){
+          echo("Total active players in guild" SPC %rs.getFieldValue("actives") @ "\n");
+          echo("Total players in guild" SPC %rs.getFieldValue("total") @ "\n");
           LiFxRaidProtection::createProtection(%rs.getFieldValue("GuildID"),%rs.getFieldValue("Name"),%rs.getFieldValue("CenterGeoID"),%rs.getFieldValue("Radius"));
         }
       }
+      %rs.delete();
     }
   }
   function LiFxRaidProtection::onConnectClient(%this, %obj) {
@@ -87,6 +93,7 @@ package LiFxRaidProtection {
       else if (%count == 0 && !%GuildID && %CharID > 0)
         dbi.Select(LifXRaidprotection, "assessProtection", "SELECT COUNT(*), g.ID,  c.id as CharID FROM `lifx_character` lifxC LEFT JOIN `character` c ON c.ID = lifxC.id LEFT JOIN `character` cg ON c.GuildID = cg.GuildID LEFT JOIN `guilds` g ON g.ID = cg.GuildID WHERE lifxC.active = 0 AND g.GuildTypeID > 2 AND lifxC.id = " @ %CharID );
     }
+    %rs.delete();
   }
   function LiFxRaidProtection::verifyProtectionDB(%this,%GuildID) {
     dbi.Select(LifXRaidprotection, "verifyProtection", "SELECT COUNT(*), g.ID as GuildID, g.Name FROM `lifx_character` lifxC  LEFT JOIN `character` c ON c.ID = lifxC.id LEFT JOIN `guilds` AS g ON c.GuildID = g.ID LEFT JOIN `guild_lands` gl ON gl.GuildID = g.ID  WHERE g.GuildTypeID > 2 AND lifxC.active = 1 AND c.GuildID = "@ %GuildID);
@@ -102,11 +109,13 @@ package LiFxRaidProtection {
       else if(%CenterGeoID)
         LiFxRaidProtection::createProtection(%rs.getFieldValue("GuildID"),%rs.getFieldValue("Name"),%rs.getFieldValue("CenterGeoID"),%rs.getFieldValue("Radius") );
     }
+    %rs.delete();
   }
   function LiFxRaidProtection::createProtection(%GuildID, %Name, %CenterGeoID, %Radius) {
     LiFx::debugEcho(%GuildID SPC %Name SPC %CenterGeoID SPC %Radius);
     if (isObject(cmChildObjectsGroup) && IsJHActive())
     {
+      echo("Creating protection for guild" SPC %Name @ "\n");
       LiFxRaidProtection::addProtectionToModels(LiFxRaidProtection::findShapeFiles("monument_01.xyz", cmChildObjectsGroup), %GuildID, %Name, %CenterGeoID, %Radius);
       LiFxRaidProtection::addProtectionToModels(LiFxRaidProtection::findShapeFiles("monument_02.xyz", cmChildObjectsGroup), %GuildID, %Name, %CenterGeoID, %Radius);
       LiFxRaidProtection::addProtectionToModels(LiFxRaidProtection::findShapeFiles("monument_03.xyz", cmChildObjectsGroup), %GuildID, %Name, %CenterGeoID, %Radius);
@@ -165,16 +174,19 @@ package LiFxRaidProtection {
     }
   }
   
-  function LiFxRaidProtection::forceRemoveProtection(%this) {
+  function LiFxRaidProtection::forceRemoveProtection(%this, %rs) {
     if(!%rs)
-      dbi.Select(LifXRaidprotection, "removeProtection", "SELECT g.Name FROM `guilds` AS g WHERE g.GuildTypeID > 2");
+      dbi.Select(LifXRaidprotection, "forceRemoveProtection", "SELECT g.Name FROM `guilds` AS g WHERE g.GuildTypeID > 2");
     else {
       if(%rs.ok())
       {
         while(%rs.nextRecord()) 
         {
+          echo("Registered triggers:" SPC $LiFxRaidProtection::triggers.getCount());
           for(%i = 0; %i < $LiFxRaidProtection::triggers.getCount(); %i++) {
+            echo("Checking:" SPC %rs.getFieldValue("Name"));
             if($LiFxRaidProtection::triggers.getObject(%i).name $= %rs.getFieldValue("Name")) {
+              echo("Removing:" SPC $LiFxRaidProtection::triggers.getObject(%i).name);
               $LiFxRaidProtection::triggers.getObject(%i).shield.delete();
               $LiFxRaidProtection::triggers.getObject(%i).Trigger.delete();
               $LiFxRaidProtection::triggers.getObject(%i).delete();
@@ -182,6 +194,7 @@ package LiFxRaidProtection {
           }
         }
       }
+      %rs.delete();
     }
   }
   function LiFxRaidProtection::removeProtection(%this, %rs) {
@@ -201,6 +214,7 @@ package LiFxRaidProtection {
           }
         }
       }
+      %rs.delete();
     }
   }
   function LiFxRaidProtection::findShapeFiles( %shape, %group) {
