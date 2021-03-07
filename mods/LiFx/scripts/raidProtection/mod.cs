@@ -22,12 +22,17 @@ datablock TriggerData(LiFxRaidProtectionTrigger)
     local = 1;
     tickPeriodMs = 1000;
 };
-if(!$LiFx::raidProtection::timeToProtection)
+if(!isDefined("$LiFx::raidProtection::timeToProtection"))
+{
+  echo("Raid protection not configured, setting default 5 min");
   $LiFx::raidProtection::timeToProtection = 5;
+}
 
 $LiFxRaidProtection::triggers = new SimGroup("");
 package LiFxRaidProtection {
-
+  function LifXRaidprotection::table() {
+    return "LiFx_character";
+  }
   function LiFxRaidProtection::setup() {
     LiFx::registerCallback($LiFx::hooks::onJHStartCallbacks,addProtection, LiFxRaidProtection);
     LiFx::registerCallback($LiFx::hooks::onJHEndCallbacks,forceRemoveProtection, LiFxRaidProtection);
@@ -42,23 +47,23 @@ package LiFxRaidProtection {
   }
   function LifXRaidprotection::dbChanges() {
     dbi.Update("ALTER TABLE `guild_standings` CHANGE COLUMN `StandingTypeID` `StandingTypeID` TINYINT(3) UNSIGNED NOT NULL DEFAULT '3' AFTER `GuildID2`;");
-    dbi.Update("CREATE TABLE IF NOT EXISTS `LiFx_character` (	`id` INT UNSIGNED NOT NULL,	`active` BIT NULL DEFAULT NULL,	`loggedIn` TIMESTAMP NULL DEFAULT NULL,	`loggedOut` TIMESTAMP NULL DEFAULT NULL,	PRIMARY KEY (`id`),	CONSTRAINT `fk_character_id` FOREIGN KEY (`id`) REFERENCES `character` (`ID`) ON UPDATE NO ACTION ON DELETE NO ACTION) COLLATE='latin1_swedish_ci';");
-    dbi.Update("INSERT `LiFx_character` SELECT distinct ID, null, null, null FROM `character` c WHERE NOT EXISTS (select * FROM `LiFx_character` lifxc WHERE lifxc.id = c.ID);");
-    dbi.Update("UPDATE `LiFx_character` SET active = 0;");
+    dbi.Update("CREATE TABLE IF NOT EXISTS `" @ LifXRaidprotection::table() @ "` (	`id` INT UNSIGNED NOT NULL,	`active` BIT NULL DEFAULT NULL,	`loggedIn` TIMESTAMP NULL DEFAULT NULL,	`loggedOut` TIMESTAMP NULL DEFAULT NULL,	PRIMARY KEY (`id`),	CONSTRAINT `fk_character_id` FOREIGN KEY (`id`) REFERENCES `character` (`ID`) ON UPDATE NO ACTION ON DELETE CASCADE) COLLATE='latin1_swedish_ci';");
+    dbi.Update("INSERT `" @ LifXRaidprotection::table() @ "` SELECT distinct ID, null, null, null FROM `character` c WHERE NOT EXISTS (select * FROM `" @ LifXRaidprotection::table() @ "` lifxc WHERE lifxc.id = c.ID);");
+    dbi.Update("UPDATE `" @ LifXRaidprotection::table() @ "` SET active = 0;");
     dbi.Update("DROP TRIGGER IF EXISTS `character_lifx_after_insert`;");
     %sql = "CREATE TRIGGER `character_lifx_after_insert`\n";
     %sql = %sql @ "AFTER INSERT\n";
     %sql = %sql @ "ON `character`\n";
     %sql = %sql @ "FOR EACH ROW\n";
     %sql = %sql @ "BEGIN\n";
-    %sql = %sql @ "  INSERT INTO `lifx_character` VALUES (NEW.ID, 0, NULL, NULL);\n";
+    %sql = %sql @ "  INSERT INTO `" @ LifXRaidprotection::table() @ "` VALUES (NEW.ID, 0, NULL, NULL);\n";
     %sql = %sql @ "END;\n";
     dbi.Update(%sql);
-    dbi.Update("UPDATE `LiFx_character` SET active = 0;");
+    dbi.Update("UPDATE `" @ LifXRaidprotection::table() @ "` SET active = 0;");
   }
   function LiFxRaidProtection::addProtection(%this, %rs) {
     if(!%rs)
-      dbi.Select(LifXRaidprotection, "addProtection", "SELECT g.Name, gl.CenterGeoID, gl.Radius, ret.actives, ret.total, ret.GuildID FROM ( SELECT SUM(lc.active) AS actives, COUNT(lc.active) AS total, c.GuildID AS GuildID FROM `lifx_character` lc LEFT JOIN `character` c ON c.ID = lc.id GROUP BY c.GuildID ) AS ret LEFT JOIN `guilds` AS g ON ret.GuildID = g.ID LEFT JOIN `guild_lands` gl ON gl.GuildID = g.ID WHERE g.GuildTypeID > 2 AND ret.actives = 0 GROUP BY ret.GuildID");
+      dbi.Select(LifXRaidprotection, "addProtection", "SELECT g.Name, gl.CenterGeoID, gl.Radius, ret.actives, ret.total, ret.GuildID FROM ( SELECT SUM(lc.active) AS actives, COUNT(lc.active) AS total, c.GuildID AS GuildID FROM `" @ LifXRaidprotection::table() @ "` lc LEFT JOIN `character` c ON c.ID = lc.id GROUP BY c.GuildID ) AS ret LEFT JOIN `guilds` AS g ON ret.GuildID = g.ID LEFT JOIN `guild_lands` gl ON gl.GuildID = g.ID WHERE g.GuildTypeID > 2 AND ret.actives = 0 GROUP BY ret.GuildID");
     else {
       if(%rs.ok())
       {
@@ -72,12 +77,12 @@ package LiFxRaidProtection {
     }
   }
   function LiFxRaidProtection::onConnectClient(%this, %obj) {
-    dbi.Update("UPDATE `LiFx_character` SET active = 1, loggedIn = now() WHERE id=" @ %obj.getCharacterId());
-    dbi.Select(LifXRaidprotection, "removeProtection", "SELECT COUNT(*), g.ID, g.Name FROM `lifx_character` lifxC LEFT JOIN `character` c ON c.ID = lifxC.id LEFT JOIN `character` cg ON c.GuildID = cg.GuildID LEFT JOIN `guilds` g ON g.ID = cg.GuildID WHERE g.GuildTypeID > 2 AND lifxC.id = " @ %obj.getCharacterId());
+    dbi.Update("UPDATE `" @ LifXRaidprotection::table() @ "` SET active = 1, loggedIn = now() WHERE id=" @ %obj.getCharacterId());
+    dbi.Select(LifXRaidprotection, "removeProtection", "SELECT COUNT(*), g.ID, g.Name FROM `" @ LifXRaidprotection::table() @ "` lifxc LEFT JOIN `character` c ON c.ID = lifxc.id LEFT JOIN `character` cg ON c.GuildID = cg.GuildID LEFT JOIN `guilds` g ON g.ID = cg.GuildID WHERE g.GuildTypeID > 2 AND lifxc.id = " @ %obj.getCharacterId());
   }
   function LiFxRaidProtection::onDisconnectClient(%this, %obj) {
-    dbi.Update("UPDATE `LiFx_character` SET active = 0, loggedOut = now() WHERE id=" @ %obj.getCharacterId());
-    dbi.Select(LifXRaidprotection, "assessProtection", "SELECT COUNT(*), g.ID,  " @ %obj.getCharacterId() @ " as CharID FROM `lifx_character` lifxC LEFT JOIN `character` c ON c.ID = lifxC.id LEFT JOIN `character` cg ON c.GuildID = cg.GuildID LEFT JOIN `guilds` g ON g.ID = cg.GuildID WHERE g.GuildTypeID > 2 AND 0 = (SELECT COUNT(*) FROM `lifx_character` lc LEFT JOIN `character` c2 ON c2.ID = lc.id WHERE lc.active = 1) AND lifXc.active = 1 AND lifxC.id = " @ %obj.getCharacterId());
+    dbi.Update("UPDATE `" @ LifXRaidprotection::table() @ "` SET active = 0, loggedOut = now() WHERE id=" @ %obj.getCharacterId());
+    dbi.Select(LifXRaidprotection, "assessProtection", "SELECT COUNT(*), g.ID,  " @ %obj.getCharacterId() @ " as CharID FROM `" @ LifXRaidprotection::table() @ "` lifxc LEFT JOIN `character` c ON c.ID = lifxc.id LEFT JOIN `character` cg ON c.GuildID = cg.GuildID LEFT JOIN `guilds` g ON g.ID = cg.GuildID WHERE g.GuildTypeID > 2 AND 0 = (SELECT COUNT(*) FROM `" @ LifXRaidprotection::table() @ "` lc LEFT JOIN `character` c2 ON c2.ID = lc.id WHERE lc.active = 1) AND lifxc.active = 1 AND lifxc.id = " @ %obj.getCharacterId());
   }
   function LifXRaidprotection::addCharacter(){}
   function LifXRaidprotection::onPostInit(){}
@@ -91,12 +96,12 @@ package LiFxRaidProtection {
         LiFxRaidProtection.schedule($LiFx::raidProtection::timeToProtection * 60000, "verifyProtectionDB", %GuildID);
       }
       else if (%count == 0 && !%GuildID && %CharID > 0)
-        dbi.Select(LifXRaidprotection, "assessProtection", "SELECT COUNT(*), g.ID,  c.id as CharID FROM `lifx_character` lifxC LEFT JOIN `character` c ON c.ID = lifxC.id LEFT JOIN `character` cg ON c.GuildID = cg.GuildID LEFT JOIN `guilds` g ON g.ID = cg.GuildID WHERE lifxC.active = 0 AND g.GuildTypeID > 2 AND lifxC.id = " @ %CharID );
+        dbi.Select(LifXRaidprotection, "assessProtection", "SELECT COUNT(*), g.ID,  c.id as CharID FROM `" @ LifXRaidprotection::table() @ "` lifxc LEFT JOIN `character` c ON c.ID = lifxc.id LEFT JOIN `character` cg ON c.GuildID = cg.GuildID LEFT JOIN `guilds` g ON g.ID = cg.GuildID WHERE lifxc.active = 0 AND g.GuildTypeID > 2 AND lifxc.id = " @ %CharID );
     }
     %rs.delete();
   }
   function LiFxRaidProtection::verifyProtectionDB(%this,%GuildID) {
-    dbi.Select(LifXRaidprotection, "verifyProtection", "SELECT COUNT(*), g.ID as GuildID, g.Name FROM `lifx_character` lifxC  LEFT JOIN `character` c ON c.ID = lifxC.id LEFT JOIN `guilds` AS g ON c.GuildID = g.ID LEFT JOIN `guild_lands` gl ON gl.GuildID = g.ID  WHERE g.GuildTypeID > 2 AND lifxC.active = 1 AND c.GuildID = "@ %GuildID);
+    dbi.Select(LifXRaidprotection, "verifyProtection", "SELECT COUNT(*), g.ID as GuildID, g.Name FROM `" @ LifXRaidprotection::table() @ "` lifxc  LEFT JOIN `character` c ON c.ID = lifxc.id LEFT JOIN `guilds` AS g ON c.GuildID = g.ID LEFT JOIN `guild_lands` gl ON gl.GuildID = g.ID  WHERE g.GuildTypeID > 2 AND lifxc.active = 1 AND c.GuildID = "@ %GuildID);
   }
   function LifXRaidprotection::verifyProtection(%this, %rs) {
     if(%rs.ok() && %rs.nextRecord())
@@ -199,7 +204,7 @@ package LiFxRaidProtection {
   }
   function LiFxRaidProtection::removeProtection(%this, %rs) {
     if(!%rs)
-      dbi.Select(LifXRaidprotection, "removeProtection", "SELECT g.ID as GuildID, g.Name, gl.CenterGeoID, gl.Radius FROM `lifx_character` lifxC  LEFT JOIN `character` c ON c.ID = lifxC.id LEFT JOIN `guilds` AS g ON c.GuildID = g.ID LEFT JOIN `guild_lands` gl ON gl.GuildID = g.ID  WHERE g.GuildTypeID > 2 AND 0 = (SELECT COUNT(*) FROM `lifx_character` lc LEFT JOIN `character` c2 ON c2.ID = lc.id WHERE lc.active = 1)");
+      dbi.Select(LifXRaidprotection, "removeProtection", "SELECT g.Name, gl.CenterGeoID, gl.Radius, ret.actives, ret.total, ret.GuildID FROM ( SELECT SUM(lc.active) AS actives, COUNT(lc.active) AS total, c.GuildID AS GuildID FROM `" @ LifXRaidprotection::table() @ "` lc LEFT JOIN `character` c ON c.ID = lc.id GROUP BY c.GuildID ) AS ret LEFT JOIN `guilds` AS g ON ret.GuildID = g.ID LEFT JOIN `guild_lands` gl ON gl.GuildID = g.ID WHERE g.GuildTypeID > 2 AND ret.actives = 0 GROUP BY ret.GuildID");
     else {
       if(%rs.ok())
       {
