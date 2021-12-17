@@ -143,7 +143,7 @@ package LiFxRaidProtection {
           if(%gi.name $= %Name)
             return;
         %shield = new TSStatic() {
-            shapeName = "yolauncher/modpack/ServerSide/raidProtection/divineShield.dts";
+            shapeName = "mods/LiFx/scripts/raidProtection/divineShield.dts";
             playAmbient = "1";
             meshCulling = "0";
             originSort = "0";
