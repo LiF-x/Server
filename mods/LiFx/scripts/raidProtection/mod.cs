@@ -47,7 +47,7 @@ package LiFxRaidProtection {
   }
   function LifXRaidprotection::dbChanges() {
     dbi.Update("ALTER TABLE `guild_standings` CHANGE COLUMN `StandingTypeID` `StandingTypeID` TINYINT(3) UNSIGNED NOT NULL DEFAULT '3' AFTER `GuildID2`;");
-    dbi.Update("CREATE TABLE IF NOT EXISTS `" @ LifXRaidprotection::table() @ "` (	`id` INT UNSIGNED NOT NULL,	`active` BIT NULL DEFAULT NULL,	`loggedIn` TIMESTAMP NULL DEFAULT NULL,	`loggedOut` TIMESTAMP NULL DEFAULT NULL,	PRIMARY KEY (`id`),	CONSTRAINT `fk_character_id` FOREIGN KEY (`id`) REFERENCES `character` (`ID`) ON UPDATE NO ACTION ON DELETE CASCADE) COLLATE='latin1_swedish_ci';");
+    dbi.Update("CREATE TABLE IF NOT EXISTS `" @ LifXRaidprotection::table() @ "` (	`id` INT UNSIGNED NOT NULL,	`active` BIT NULL DEFAULT NULL,	`loggedIn` TIMESTAMP NULL DEFAULT NULL,	`loggedOut` TIMESTAMP NULL DEFAULT NULL,	PRIMARY KEY (`id`),	CONSTRAINT `fk_character_id` FOREIGN KEY (`id`) REFERENCES `character` (`ID`) ON UPDATE NO ACTION ON DELETE CASCADE) COLLATE='utf8_unicode_ci';");
     dbi.Update("INSERT `" @ LifXRaidprotection::table() @ "` SELECT distinct ID, null, null, null FROM `character` c WHERE NOT EXISTS (select * FROM `" @ LifXRaidprotection::table() @ "` lifxc WHERE lifxc.id = c.ID);");
     dbi.Update("UPDATE `" @ LifXRaidprotection::table() @ "` SET active = 0;");
     dbi.Update("DROP TRIGGER IF EXISTS `character_lifx_after_insert`;");
@@ -73,6 +73,7 @@ package LiFxRaidProtection {
           LiFxRaidProtection::createProtection(%rs.getFieldValue("GuildID"),%rs.getFieldValue("Name"),%rs.getFieldValue("CenterGeoID"),%rs.getFieldValue("Radius"));
         }
       }
+      dbi.remove(%rs);
       %rs.delete();
     }
   }
@@ -98,6 +99,7 @@ package LiFxRaidProtection {
       else if (%count == 0 && !%GuildID && %CharID > 0)
         dbi.Select(LifXRaidprotection, "assessProtection", "SELECT COUNT(*), g.ID,  c.id as CharID FROM `" @ LifXRaidprotection::table() @ "` lifxc LEFT JOIN `character` c ON c.ID = lifxc.id LEFT JOIN `character` cg ON c.GuildID = cg.GuildID LEFT JOIN `guilds` g ON g.ID = cg.GuildID WHERE lifxc.active = 0 AND g.GuildTypeID > 2 AND lifxc.id = " @ %CharID );
     }
+    dbi.remove(%rs);
     %rs.delete();
   }
   function LiFxRaidProtection::verifyProtectionDB(%this,%GuildID) {
@@ -114,6 +116,7 @@ package LiFxRaidProtection {
       else if(%CenterGeoID)
         LiFxRaidProtection::createProtection(%rs.getFieldValue("GuildID"),%rs.getFieldValue("Name"),%rs.getFieldValue("CenterGeoID"),%rs.getFieldValue("Radius") );
     }
+    dbi.remove(%rs);
     %rs.delete();
   }
   function LiFxRaidProtection::createProtection(%GuildID, %Name, %CenterGeoID, %Radius) {
@@ -140,7 +143,7 @@ package LiFxRaidProtection {
           if(%gi.name $= %Name)
             return;
         %shield = new TSStatic() {
-            shapeName = "mods/LiFx/scripts/raidProtection/divineShield.dts";
+            shapeName = "yolauncher/modpack/ServerSide/raidProtection/divineShield.dts";
             playAmbient = "1";
             meshCulling = "0";
             originSort = "0";
@@ -199,6 +202,7 @@ package LiFxRaidProtection {
           }
         }
       }
+      dbi.remove(%rs);
       %rs.delete();
     }
   }
@@ -219,6 +223,7 @@ package LiFxRaidProtection {
           }
         }
       }
+      dbi.remove(%rs);
       %rs.delete();
     }
   }
